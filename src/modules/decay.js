@@ -5,6 +5,22 @@ import { off } from "./util";
 export default () => "";
 
 export const typeSymbol = Symbol("decay");
+const extractLineNumber = stack => /:(\d+)/.exec(stack.split("\n")[2])[0];
+
+console.ident = (v, opt = { label: "", lineNumber: false }) => (
+  console.log(
+    `%c${
+      typeof opt === "string"
+        ? opt
+        : `${opt.label || ""}${
+            opt.lineNumber ? extractLineNumber(Error().stack) : ""
+          }`
+    }`,
+    "background:black;color:white;border-radius:5px;padding:1px",
+    v
+  ),
+  v
+);
 
 const defaultDecayValues = {
   decayRate: 1,
@@ -71,16 +87,29 @@ var getkeys = function(obj, prefix) {
 
   return keys.reduce((result, key) => {
     return _.isPlainObject(obj[key])
-      ? [...result, getkeys(obj[key], prefix + key)]
+      ? [...result, ...getkeys(obj[key], prefix + key)]
       : [...result, prefix + key];
   }, []);
 };
 
-const updaterPaths = console
-  .ident(getkeys(defaultDecayValues), { lineNumber: true })
-  .reduce(
-    (acc, path) => ({ ...acc, [_.last(console.ident(path).split("."))]: path }),
-    {}
-  );
+const updaterLenses = getkeys(defaultDecayValues).reduce((acc, path) => {
+  let key = _.last(path.split("."));
+  key = !(key in acc)
+    ? key
+    : path
+        .split(".")
+        .slice(-2)
+        .join(".");
+  return console.ident({ ...acc, [key]: R.lens(path) });
+}, {});
+console.log(updaterLenses);
+const director = state => action =>
+  action.type === "update" && action.target in updaterLenses
+    ? R[_.isFunction(action.payload) ? "over" : "set"](
+        updaterLenses[action.target],
+        action.payload,
+        state
+      )
+    : state;
 
-console.log(defaultDecayValues, updaterPaths);
+console.log(updaterLenses);
